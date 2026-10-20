@@ -78,6 +78,7 @@ tea_data <- make_tea_data(n_total = 18, delta = .5)
 Now, make a new data frame (call it `tea_data_highn`) with an N of 48, or something higher if you want. You need to call the custom function. Keep the same small effect (`delta = .5`): we come back to this experiment in Parts 2 and 3.
 
 ```{r}
+tea_data_highn <- make_tea_data(n_total = 48, delta = .5)
 
 ```
 
@@ -88,7 +89,13 @@ Call `summary(tea_data)` and look at the outputs. Call `head(tea_data)` to look 
 To do: Write basic tidyverse code to calculate the mean of each condition (hint: use `group_by` and `summarize`).
 
 ```{r}
+tea_data %>%
+  group_by(condition) %>%
+  summarize(mean(rating))
 
+tea_data_highn %>%
+  group_by(condition) %>%
+  summarize(mean(rating))
  
 ```
 
@@ -125,7 +132,9 @@ samps <- tibble(sim = 1:1000) |>
 OK, copy this but now change it so that you 48 participants per experiment
 
 ```{r}
-samps_highn <-...
+samps_highn <- tibble(sim = 1:1000) |> 
+  mutate(data = map(sim, \(i) make_tea_data(n_total = 48, delta = 1.5))) |>  # simulate
+  unnest(cols = data)
 ```
 
 ### Summarize both of these simulations
@@ -140,11 +149,11 @@ Bonus: Figure out a way to do this that is better than I what I did (some mix of
 
 ```{r}
 tea_data_summary <- samps |>
-  group_by(sim, condition) |> 
-  summarise(mean_rating = mean(rating)) |> 
+  group_by(sim, condition) |> # group by simulation and condition
+  summarise(mean_rating = mean(rating)) |> # calculate avg rating per experiment
   group_by(sim) |> 
   summarise(delta = mean_rating[condition == "milk first"] -
-              mean_rating[condition == "tea first"])
+              mean_rating[condition == "tea first"]) # calculate mean difference between milk first vs tea first
 ```
 
 ```{r}
@@ -161,6 +170,12 @@ tea_data_highn_summary <- samps_highn |>
 Let's make a plot to plot the differences in ratings across conditions for the low-n condition. You'll need to use ggplot or `hist`
 
 ```{r}
+# option 1
+ggplot(data=tea_data_summary, aes(x=delta)) +
+  geom_histogram() 
+
+# option 2
+hist(tea_data_summary$delta)
 
 ```
 
@@ -170,6 +185,14 @@ To do: What's different about this distribution vs the one we just plotted?
 
 ```{r}
 
+# option 1:
+ggplot(data=tea_data_highn_summary, aes(x=delta)) +
+  geom_histogram()
+
+# option 2:
+hist(tea_data_highn_summary$delta)
+
+# this one has a smaller range 
 ```
 
 **Bonus** What happens if you run it again, but this time try changing the variance / mean of the effect when you change the `delta` and `sigma` values in the data simulation.
@@ -188,12 +211,24 @@ Call the simulated experiments `null_model` and use 18 participants per experime
 
 ```{r}
 # Simulate the null distribution
-  
+
+null_model <- tibble(sim = 1:1000) |> 
+  mutate(data = map(sim, \(i) make_tea_data(n_total = 18, delta = 0))) |>  # delta AKA differences in conditions is zero
+  unnest(cols = data) 
+
+null_summary <- null_model |>
+  group_by(sim, condition) |> 
+  summarise(mean_rating = mean(rating)) |> 
+  group_by(sim) |> 
+  summarise(delta = mean_rating[condition == "milk first"] -
+              mean_rating[condition == "tea first"])
 ```
 
 Visualize what this null distribution actually looks like.
 
 ```{r}
+
+hist(null_summary$delta)
 
 ```
 
@@ -238,7 +273,7 @@ hist(tea_data_highn_shuffled_summary$delta) #what does this histogram look like?
 
 OK, now see what happens to our raw data -- this is just one of the shuffles. The color refers to the ORIGINAL label before we shuffled, but our condition difference is gone
 
-The color refers to the ORIGINAL condition The x-axis refers to the SHUFFLED condition
+The color refers to the ORIGINAL condition. The x-axis refers to the SHUFFLED condition
 
 ```{r}
 ggplot(data = tea_data_highn_shuffled %>% filter(sim==3),  # can change the shuffle number here
@@ -482,6 +517,7 @@ How often did we fail to reject the null hypothesis? When was our p-value greate
 
 ```{r}
 # you'll need all_results_high_n$pvalue
+hist(all_results_high_n$pvalue)
 
 ```
 
@@ -506,8 +542,8 @@ Check your function: `estimate_power(48, 1.5)` should be close to 1 minus the mi
 
 ```{r}
 estimate_power <- function(n_total, delta, n_sims = 500) {
-  # your code here
-  
+    p_values <- map_dbl(1:n_sims, \(i) run_one_experiment(n_total, delta)) # simulate
+    mean(p_values < .05) # proportion significant
 }
 
 estimate_power(n_total = 48, delta = 1.5)
@@ -525,14 +561,21 @@ power_curve <- expand_grid(n_total = seq(10, 100, by = 10), # total participants
 To do: Plot the power curves: `n_total` on the x-axis, `power` on the y-axis, and one line per `delta` (hint: `color = factor(delta)`). Add a dashed horizontal line at .8, the conventional target for power (hint: `geom_hline()`).
 
 ```{r}
-
+ggplot(power_curve, aes(x = n_total, y = power, color = factor(delta))) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = .8, linetype = "dashed") + 
+  geom_hline(yintercept = .05, linetype = "dotted") +
+  labs(x = "total participants (n_total)",
+       y = "power (proportion of experiments with p < .05)",
+       color = "delta") 
 ```
 
 To do: Answer these questions.
 
-1.  What is "power" when delta = 0? Why doesn't it go up with more participants?
-2.  About how many participants do you need for 80% power when delta = 1? When delta = 0.5?
-3.  In Part 1, `tea_data` had 18 participants and a true effect of delta = 0.5. About what was its power? If that one experiment had come out significant, how much would you trust it?
+1.  What is "power" when delta = 0? Why doesn't it go up with more participants? No effect
+2.  About how many participants do you need for 80% power when delta = 1? When delta = 0.5? When delta = 1, around 50 to 60 participants. When delta = 0.5, you'd need more than 100 participants. 
+3.  In Part 1, `tea_data` had 18 participants and a true effect of delta = 0.5. About what was its power? If that one experiment had come out significant, how much would you trust it? Only about 10%, so it had really low power. I wouldn't trust it because it's likely missing the real effect.
 
 **Bonus** Extend `n_total` until delta = 0.5 reaches 80% power. How many participants does it take?
 
